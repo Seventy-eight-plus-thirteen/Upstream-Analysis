@@ -148,6 +148,46 @@ file = hg38_genes.bed
 
 Plus: saddle plot (compartment strength), P(s) curve, APA plot if loops called.
 
+#### Publication-ready visualization with gghic (R)
+
+For顶刊-style triangle heatmaps (Rao 2014 Nature format, long edge on X-axis), use **gghic** R package on the server. Key advantages over pyGenomeTracks:
+- Native 45° polygon-triangle rendering (not imshow+mask)
+- `gghic()` one-call comprehensive panel: heatmap + compartment + TAD + loops + genes + ideogram
+- ggplot2 ecosystem: `patchwork` for multi-sample side-by-side
+
+**Installation** (server has R 4.4.1):
+```r
+# Bioconductor deps from tuna mirror (bioconductor.org times out in CN)
+options(repos = c(CRAN = "https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))
+bioc_repo <- "https://mirrors.tuna.tsinghua.edu.cn/bioconductor/packages/release/bioc"
+install.packages(c("ggh4x", "ggnewscale"), repos = bioc_repo, quiet = TRUE)
+install.packages("HiCExperiment", repos = bioc_repo, dependencies = NA, quiet = TRUE)
+# gghic from GitHub (github.com blocked → download via gh api locally, scp to server)
+# Local: gh api repos/jasonwong-lab/gghic/tarball > gghic.tar.gz; scp to server
+# Server: R CMD INSTALL gghic-source-dir
+```
+
+**Usage** (triangle heatmap + compartment + genes panel):
+```r
+library(gghic); library(HiCExperiment); library(ggplot2); library(patchwork)
+cc <- ChromatinContacts("sample.mcool", resolution = 128000L,
+                        focus = "chr7:45000000-55000000") |> import()
+# One-call comprehensive: gghic(cc, annotation=TRUE, gtf_path="hg38.gtf")
+# Or manual geom_hic for custom control:
+p_hic <- gghic(cc, scale_method = log10, expand_xaxis = TRUE)
+# EV1 compartment bar track from eigs TSV
+p_ev  <- ggplot(ev) + geom_bar(aes(mid, E1, fill = col), stat = "identity")
+# Gene track from BED (add chr prefix if BED is nochr format)
+combined <- p_hic / p_ev / p_genes + plot_layout(heights = c(5, 1, 0.8))
+```
+
+**Key parameters**:
+- `resolution` must be `128000L` (integer, matching mcool bin size exactly)
+- `focus` = "chr:start-end" (UCSC format, with chr prefix)
+- `scale_method = log10` for standard log-normalized contact
+- `expand_xaxis = TRUE` prevents leftmost X-axis label truncation
+- BED gene files: add `chr` prefix to match mcool chromosome naming
+
 ## Test Mode (small-scale validation)
 
 Use any small published Hi-C SRR (~1-2GB fastq). PASS criteria:

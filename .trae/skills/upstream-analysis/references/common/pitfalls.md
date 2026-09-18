@@ -67,6 +67,15 @@
 | 34 | cooltools `--bigwig` fails (FileNotFoundError: bedGraphToBigWig) | `--bigwig` requires UCSC `bedGraphToBigWig` tool; server doesn't have it | Drop `--bigwig`; eigenvector/insulation data is in TSV, can convert to bedgraph manually for pyGenomeTracks |
 | 35 | cooltools `insulation` IndexError (index 0 out of bounds for axis 0 with size 0) | cooler 0.10.4 `annotate` incompatible with cooltools 0.7.1 `insul_diamond` on sparse bins | Non-fatal — skip insulation; TAD boundaries visible from contact heatmap. Or upgrade cooler/cooltools to matching versions |
 
+### Hi-C Visualization Stage (gghic)
+
+| # | Symptom | Cause | Fix |
+|---|---------|-------|-----|
+| 36 | BiocManager "Bioconductor version cannot be validated; no internet connection" | bioconductor.org config.yaml times out in CN; BiocManager forces validation even with mirror set | Bypass BiocManager entirely: `install.packages("HiCExperiment", repos="https://mirrors.tuna.tsinghua.edu.cn/bioconductor/packages/release/bioc")` |
+| 37 | gghic install fails — "cannot connect to github.com" | github.com port 443 blocked (even with gh CLI) | Download source tarball via `gh api repos/jasonwong-lab/gghic/tarball > gghic.tar.gz` locally, scp to server, `R CMD INSTALL` from source |
+| 38 | `ChromatinContacts()` "resolution must be a single positive integer" | Passed numeric (128000) instead of integer; or file.path() concatenated region into path | Use `128000L` (R integer suffix); pass `focus=` and `resolution=` as separate args, not concatenated in path |
+| 39 | gghic X-axis leftmost label truncated ("5.0 M" instead of "45.0 M") | Default plot margins too tight for long axis labels | Add `expand_xaxis = TRUE` in `gghic()` call, or `theme(plot.margin = margin(5, 15, 5, 10))` |
+
 ### Tool Installation Stage
 
 | # | Symptom | Cause | Fix |
