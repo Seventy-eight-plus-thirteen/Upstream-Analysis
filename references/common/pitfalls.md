@@ -57,6 +57,30 @@
 | 29 | `bamCoverage: invalid choice: 'RPM'` | newer deepTools removed `--normalizeUsing RPM` (allowed: RPKM/CPM/BPM/RPGC/None) | Use `--normalizeUsing BPM` (bins per million = per-million-reads equivalent, no length normalization) |
 | 30 | Editing orchestrator.sh mid-run doesn't affect already-started stages | bowtie2 launched with `--very-sensitive` keeps using that even after the script is edited to `--sensitive`; the process reads its args at launch time, not from the file | To change params for a running stage: `kill` the process + `rm` half-finished BAMs + `rm flags/<stage>_<SRR>` + restart orchestrator. Always verify the new process's actual CLI args with `ps -p <pid> -o cmd` |
 
+### Hi-C Matrix Stage
+
+| # | Symptom | Cause | Fix |
+|---|---------|-------|-----|
+| 31 | `cooler cload pairs` BadGzipFile error | chromap outputs **plain-text** pairs (not gzip); cooler expects `.pairs.gz` | `gzip pairsfile` before cload, or use `cooler cload pairs --input-buffer 0` |
+| 32 | `cooler zoomify` resolution not found | zoomify doubles base resolution (1000→2000→4000→…→64000→128000); arbitrary values like 10000/25000/100000 don't exist | Use powers-of-2 multiples of base: 32000/64000/128000/256000; check with `cooler ls mcool` |
+| 33 | cooltools `eigs-cis: No such option: -I` | cooltools 0.7.1 changed API: takes `COOL_PATH` as positional arg, not `-I` | `cooltools eigs-cis mcool::resolutions/128000 -o prefix` (no `-I`) |
+| 34 | cooltools `--bigwig` fails (FileNotFoundError: bedGraphToBigWig) | `--bigwig` requires UCSC `bedGraphToBigWig` tool; server doesn't have it | Drop `--bigwig`; eigenvector/insulation data is in TSV, can convert to bedgraph manually for pyGenomeTracks |
+| 35 | cooltools `insulation` IndexError (index 0 out of bounds for axis 0 with size 0) | cooler 0.10.0+ rewrote `annotate` from merge-based to indexing-based (PR #353), breaking cooltools 0.7.1 `insul_diamond` which relies on merge-based `cooler.annotate`. cooltools 0.7.1 requirements.txt declares `cooler>=0.9.1` with no upper bound | Create isolated conda env: `conda create -n hic -y python=3.10 && pip install "cooltools==0.7.1" "cooler==0.9.3"`. cooler 0.9.3 is the last compatible version (0.9.1 exported `_IndexingMixin` specifically for cooltools). Note: cooler 0.9.3 does NOT support NumPy 2.x; keep numpy<2 in the env. After installing, `cooler balance` the cool files if weight column is missing, then `cooltools insulation input.cool --window-pixels 128 --ignore-diags 2` |
+
+### Hi-C Visualization Stage (gghic)
+
+| # | Symptom | Cause | Fix |
+|---|---------|-------|-----|
+| 36 | BiocManager "Bioconductor version cannot be validated; no internet connection" | bioconductor.org config.yaml times out in CN; BiocManager forces validation even with mirror set | Bypass BiocManager entirely: `install.packages("HiCExperiment", repos="https://mirrors.tuna.tsinghua.edu.cn/bioconductor/packages/release/bioc")` |
+| 37 | gghic install fails — "cannot connect to github.com" | github.com port 443 blocked (even with gh CLI) | Download source tarball via `gh api repos/jasonwong-lab/gghic/tarball > gghic.tar.gz` locally, scp to server, `R CMD INSTALL` from source |
+| 38 | `ChromatinContacts()` "resolution must be a single positive integer" | Passed numeric (128000) instead of integer; or file.path() concatenated region into path | Use `128000L` (R integer suffix); pass `focus=` and `resolution=` as separate args, not concatenated in path |
+| 39 | gghic X-axis leftmost label truncated ("5.0 M" instead of "45.0 M") | Default plot margins too tight for long axis labels | Add `expand_xaxis = TRUE` in `gghic()` call, or `theme(plot.margin = margin(5, 15, 5, 10))` |
+| 40 | gghic data.frame method: "Column `balanced` not found" | gghic `.checkDataType` hardcodes `scale_column = "balanced"`; passing a column named `score` triggers the error | Rename the score column to `balanced` before calling `gghic(dt)`: `names(dt)[names(dt)=="score"] <- "balanced"` |
+| 41 | HiCExperiment `import(CoolFile)` fails: "seqinfo tag x = GRanges no inherited method" | `CoolFile(path)` without `resolution=` doesn't set the resolution slot, causing internal `seqlengths()` dispatch to fail | Always construct with resolution: `CoolFile(cool_path, resolution = 128000L)` |
+| 42 | gghic(ChromatinContacts) fails: "data must be a HiCExperiment or tibble/data.frame" | gghic 0.2.1 ChromatinContacts method internally calls `.checkDataType(interactions(x))`, but the returned GInteractions doesn't match any branch in some environments | Use the **data.frame method** instead: extract contacts via `cooler.matrix(as_pixels=True, balance=True, join=True)`, save as TSV, read in R with `read_tsv()`, rename score column to `balanced`, then `gghic(dt)` |
+| 43 | cooltools insulation: "provided cooler is not balanced or weight is missing" | The `.cool` file was created without ICE balancing; the `bins` table has no `weight` column | Run `cooler balance input.cool` first; verify with `python -c "import cooler; clr=cooler.Cooler('file.cool'); print('weight' in clr.bins().columns)"` |
+| 44 | Hi-C heatmap appears blank/empty (Python matplotlib) | Balanced matrix values span a huge dynamic range (p50≈0.004, p99≈0.31); linear color mapping renders most pixels as white | Use **gghic (R)** which applies `log10` scaling by default; or in Python use `np.log10(mat + 1e-6)` with `Normalize(vmin=percentile_1, vmax=percentile_99)` |
+
 ### Tool Installation Stage
 
 | # | Symptom | Cause | Fix |

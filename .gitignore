@@ -1,0 +1,20 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+Mediacl Academic Interpreter/
+Mediacl Academic InterpreterTests/
+Mediacl Academic InterpreterUITests/
+
+# TRAE workspace
+.trae/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# R
+.Rhistory
+.RData
