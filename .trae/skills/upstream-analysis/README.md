@@ -70,6 +70,88 @@ Data download (Aspera/prefetch/aria2c)
 - `references/<assay>/stages.md` — stage tree with verification points
 - `references/<assay>/params.md` — parameter templates
 
+## Reference Genome Preparation
+
+All assays require reference genome files. If you don't already have them on your server, here's how to obtain and build each one.
+
+### 1. hg38 FASTA (required for all assays — alignment & chromap index)
+
+```bash
+# Download from UCSC (use aria2c for speed, dual mirrors for redundancy)
+aria2c -x 16 -s 16 -k 4M -c \
+  "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz" \
+  "https://hgdownload2.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
+
+# Decompress (pigz is multi-threaded, much faster than gunzip)
+pigz -d hg38.fa.gz
+# Or: gunzip hg38.fa.gz
+
+# Verify
+grep -c ">" hg38.fa   # should be ~455 (chr1-22, X, Y, MT, scaffolds)
+```
+
+### 2. Bowtie2 Index (required for ChIP-seq & ATAC-seq)
+
+```bash
+# Build index (takes ~30-40 min with 16 threads)
+bowtie2-build --threads 16 hg38.fa hg38
+
+# Output: hg38.1.bt2, hg38.2.bt2, hg38.3.bt2, hg38.4.bt2,
+#          hg38.rev.1.bt2, hg38.rev.2.bt2
+```
+
+### 3. chromap Index (required for Hi-C)
+
+```bash
+# chromap 0.2.7 binary (download if not installed)
+# Repo: github.com/haowenz/chromap — use v0.2.7 release asset
+~/.local/bin/chromap -i -r hg38.fa -o hg38.chromap.idx -t 16
+```
+
+### 4. Gene Annotation BED (for visualization tracks)
+
+```bash
+# Option A: From GENCODE GTF (recommended — has gene symbols)
+# Download GTF:
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_26/gencode.v26.annotation.gtf.gz
+gunzip gencode.v26.annotation.gtf.gz
+
+# Extract gene-level BED (symbol as name, strip chr prefix if needed):
+awk -v OFS='\t' '$3=="gene" {
+  match($0, /gene_name "([^"]+)"/, m);
+  match($0, /gene_type "([^"]+)"/, t);
+  if (m[1] != "" && t[1] == "protein_coding") {
+    chr=$1; sub(/^chr/,"",chr); start=$4-1; end=$5; print chr,start,end,m[1]
+  }
+}' gencode.v26.annotation.gtf > hg38_genes_symbol.nochr.bed
+
+# Option B: From NCBI Gene Info (simpler, less precise)
+wget https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene.gz
+# Filter by chr and convert to BED (left as exercise)
+
+# Note: For Hi-C visualization with gghic, add chr prefix back:
+awk -v OFS='\t' '{print "chr"$1, $2, $3, $4}' hg38_genes_symbol.nochr.bed > hg38_genes_symbol.bed
+```
+
+### 5. chrom.sizes (for cooler matrix building — Hi-C)
+
+```bash
+# Generate from FASTA:
+grep ">" hg38.fa | sed 's/>//' | awk -v OFS='\t' '{print $1, length}' > chrom.sizes
+# Or fetch from UCSC:
+wget http://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.chrom.sizes
+```
+
+### Quick Checklist
+
+| File | ChIP-seq | ATAC-seq | Hi-C |
+|------|:-------:|:--------:|:----:|
+| hg38 FASTA | needed (for index build) | needed (for index build) | needed (for chromap index) |
+| Bowtie2 index | needed | needed | not needed |
+| chromap index | not needed | not needed | needed |
+| Gene BED | for tracks | for tracks | for tracks |
+| chrom.sizes | not needed | not needed | needed (cooler cload) |
+
 ## Privacy
 
 - The skill **never hardcodes credentials**. Server IP/port/username/password are provided by the user at runtime.
@@ -78,4 +160,4 @@ Data download (Aspera/prefetch/aria2c)
 
 ## Changelog
 
-- **2026-09-17**: ATAC-seq full pipeline validated on 2 real samples (H3WT/K27M); docs updated for samtools 1.13 mtDNA filter, Genrich `-j` mode, BPM normalization, `--sensitive` alignment.
+- **2026-09-17**: Hi-C full pipeline validated on 2 samples; gghic R visualization added (triangle heatmap + compartment + genes); pitfalls #31-#39 documented. Reference genome preparation tutorial added to README.
